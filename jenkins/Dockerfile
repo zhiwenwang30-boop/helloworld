@@ -1,15 +1,10 @@
-FROM jenkins/jenkins:lts-jdk17
+FROM docker.m.daocloud.io/jenkins/jenkins:lts-jdk17
 
 USER root
 
+# Install docker CLI + git from Debian repo to avoid download.docker.com dependency.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg git \
-    && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
-    && chmod a+r /etc/apt/keyrings/docker.asc \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli \
+    && apt-get install -y --no-install-recommends ca-certificates git docker.io \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

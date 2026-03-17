@@ -4,6 +4,7 @@ pipeline {
   environment {
     APP_IMAGE = "helloworld:${env.BUILD_NUMBER}"
     GITHUB_REPO = "https://github.com/zhiwenwang30-boop/helloworld.git"
+    PYTHON_MIRROR_IMAGE = "docker.m.daocloud.io/library/python:3.12-slim"
   }
 
   stages {
@@ -19,7 +20,7 @@ pipeline {
           docker run --rm \
             -v "$PWD":/workspace \
             -w /workspace \
-            python:3.12-slim \
+            ${PYTHON_MIRROR_IMAGE} \
             sh -c "pip install --no-cache-dir ruff bandit && ruff check main.py && bandit -q -r main.py"
         '''
       }
@@ -71,5 +72,3 @@ pipeline {
     }
   }
 }
-
-
