@@ -20,6 +20,8 @@ This repository provides a minimal runnable example with:
 |   |-- Dockerfile
 |   `-- plugins.txt
 |-- main.py
+|-- scripts
+|   `-- push.ps1
 `-- README.md
 ```
 
@@ -84,6 +86,12 @@ You can still commit and push manually:
 git add .
 git commit -m "init: hello world with docker jenkins static scan"
 git push origin main
+```
+
+If your local Git client cannot find `remote-https`, use this helper script:
+
+```powershell
+.\scripts\push.ps1 -Branch main
 ```
 
 ## 7. Notes
