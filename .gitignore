@@ -1,0 +1,15 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtualenv
+.venv/
+venv/
+
+# Jenkins data
+jenkins_home/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
