@@ -1,13 +1,15 @@
-# HelloWorld + Docker + Jenkins + 静态代码扫描
+# HelloWorld + Docker + Jenkins 双仓库 CI/CD
 
-这个仓库提供了一个最小可运行示例，包含：
-- Python HelloWorld
-- Docker 镜像构建与运行
-- Jenkins 流水线
-- 静态代码扫描（ruff + bandit）
-- Jenkins 通过凭据自动 push 到 GitHub
+这个仓库是业务代码仓库，只保存应用代码、Dockerfile 和本机 Jenkins 启动配置。实际流水线脚本已经迁移到独立仓库：
+
+- 业务仓库：`https://github.com/zhiwenwang30-boop/helloworld.git`
+- 流水线仓库：`https://github.com/zhiwenwang30-boop/jenkins-pipelines.git`
+- Docker Hub 镜像：`zhiwenwang30-boop/helloworld`
+
+每次业务仓库 `main` 分支收到 push 后，Jenkins 会自动执行静态扫描、构建 Docker 镜像、运行冒烟验证、创建 Git Tag，并推送 Git Tag 和 Docker Hub 镜像。
 
 ## 项目结构
+
 ```text
 .
 |-- .dockerignore
@@ -22,73 +24,136 @@
 `-- README.md
 ```
 
-## 1. 本地运行 HelloWorld
+`Jenkinsfile` 仅保留迁移提示，不再作为实际流水线入口。Jenkins Job 应读取独立流水线仓库中的 `pipelines/helloworld.Jenkinsfile`。
+
+## 本地运行
+
 ```bash
 python main.py
 ```
 
 期望输出：
+
 ```text
 Hello, World!
 ```
 
-## 2. 使用 Docker 启动 Jenkins
+## 启动 Jenkins
+
 ```bash
 docker compose up -d --build
 ```
 
 访问地址：
+
 - <http://localhost:18080>
 
-## 3. 在 Jenkins 创建 Pipeline 任务
-1. 新建任务，类型选择 `Pipeline`。
-2. 在 Pipeline 配置中选择 `Pipeline script from SCM`。
-3. SCM 选择 `Git`，仓库地址填写：
-   - `https://github.com/zhiwenwang30-boop/helloworld.git`
-4. Script Path 填写：
-   - `Jenkinsfile`
+Jenkins 镜像会安装以下核心插件：
 
-## 4. 配置 GitHub 推送凭据
-为了让 Jenkins 可以执行 `git push`，请在 Jenkins 中添加凭据：
+- `workflow-aggregator`
+- `git`
+- `github`
+- `credentials-binding`
+- `docker-workflow`
+- `pipeline-stage-view`
+- `generic-webhook-trigger`
 
-1. 进入 `Manage Jenkins` -> `Credentials`。
-2. 新建 `Username with password`：
-   - `Username`：你的 GitHub 用户名
-   - `Password`：你的 GitHub Personal Access Token（PAT）
-3. 凭据 `ID` 必须设置为：
-   - `github-push-cred`
+## Jenkins 凭据
 
-## 5. 流水线阶段说明
-`Jenkinsfile` 默认执行以下阶段：
+在 Jenkins 中添加两个 `Username with password` 凭据：
 
-1. `Checkout`：拉取代码
-2. `Static Code Scan`：在 `docker.m.daocloud.io/library/python:3.12-slim` 容器中执行
-   - `ruff check main.py`
-   - `bandit -q -r main.py`
-3. `Build Image`：执行 `docker build`
-4. `Run HelloWorld`：运行镜像并打印 `Hello, World!`
-5. `Push To GitHub`：仅在 `main` 分支执行 `git push`
+| ID | Username | Password |
+| --- | --- | --- |
+| `github-push-cred` | GitHub 用户名 | GitHub Personal Access Token |
+| `dockerhub-cred` | Docker Hub 用户名 | Docker Hub Access Token |
 
-## 6. 可选：手工推送
-你也可以手工提交并推送：
+GitHub Token 需要能读取业务仓库、读取流水线仓库，并向业务仓库推送 tag。Docker Hub Token 需要能推送 `zhiwenwang30-boop/helloworld` 镜像。
 
-```bash
-git add .
-git commit -m "init: hello world with docker jenkins static scan"
-git push origin main
+## Jenkins Job 配置
+
+1. 新建 Jenkins 任务，类型选择 `Pipeline`。
+2. 勾选 `Generic Webhook Trigger`，token 填写：
+
+```text
+helloworld-ci-token
 ```
 
-## 7. Docker Hub 无法访问时的处理
-如果出现拉取失败（例如 `registry-1.docker.io:443` 超时），本项目已默认使用镜像站：
+3. Pipeline Definition 选择 `Pipeline script from SCM`。
+4. SCM 选择 `Git`，仓库地址填写：
+
+```text
+https://github.com/zhiwenwang30-boop/jenkins-pipelines.git
+```
+
+5. Branch 填写：
+
+```text
+*/main
+```
+
+6. Script Path 填写：
+
+```text
+pipelines/helloworld.Jenkinsfile
+```
+
+## GitHub Webhook
+
+在业务仓库 `helloworld` 中配置 webhook：
+
+```text
+http://localhost:18080/generic-webhook-trigger/invoke?token=helloworld-ci-token
+```
+
+事件选择 `push`。流水线只处理 `refs/heads/main`，tag push 会被忽略，避免循环触发。
+
+如果 Jenkins 运行在本机且 GitHub 无法直接访问 `localhost`，可以先使用内网穿透工具把 `18080` 暴露成公网 HTTPS 地址，再把 webhook URL 换成该公网地址。
+
+## 流水线阶段
+
+实际流水线在 `jenkins-pipelines/pipelines/helloworld.Jenkinsfile`，固定执行：
+
+1. 校验 webhook ref，只允许 `refs/heads/main`。
+2. checkout 业务仓库指定 commit。
+3. 执行 `ruff check main.py` 和 `bandit -q -r main.py`。
+4. 生成版本号：`ci-yyyyMMdd-HHmmss-短commit`。
+5. 构建镜像：`zhiwenwang30-boop/helloworld:${VERSION_TAG}`。
+6. 标记 latest：`zhiwenwang30-boop/helloworld:latest`。
+7. 运行镜像并验证输出必须是 `Hello, World!`。
+8. 创建并推送 Git tag。
+9. 登录 Docker Hub 并推送版本镜像和 `latest`。
+
+## 迁移运行
+
+在任意安装 Docker 的机器上执行：
+
+```bash
+docker pull zhiwenwang30-boop/helloworld:latest
+docker run --rm zhiwenwang30-boop/helloworld:latest
+```
+
+期望输出：
+
+```text
+Hello, World!
+```
+
+## Docker Hub 无法访问时
+
+Jenkins 和 Python 基础镜像默认使用可访问性更好的镜像源：
+
 - `docker.m.daocloud.io/jenkins/jenkins:lts-jdk17`
 - `docker.m.daocloud.io/library/python:3.12-slim`
 
-如果仍失败，可重试：
+如果仍拉取失败，可重试：
+
 ```bash
 docker compose down
 docker compose up -d --build
 ```
 
-## 8. 注意事项
-- 为简化示例，`docker-compose.yml` 中 Jenkins 以 root 用户运行。
-- 生产环境建议使用更严格的权限控制和凭据管理策略。
+## 注意事项
+
+- 为简化本机演示，`docker-compose.yml` 中 Jenkins 以 root 用户运行。
+- `jenkins_home/` 是 Jenkins 本地数据目录，已经被 `.gitignore` 忽略。
+- 生产环境建议使用更严格的权限控制、凭据隔离和 HTTPS webhook 入口。
