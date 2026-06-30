@@ -57,6 +57,7 @@ Jenkins 镜像会安装以下核心插件：
 - `docker-workflow`
 - `pipeline-stage-view`
 - `generic-webhook-trigger`
+- `eddsa-api`
 
 ## Jenkins 凭据
 

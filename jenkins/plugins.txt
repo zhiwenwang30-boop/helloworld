@@ -5,3 +5,4 @@ credentials-binding
 docker-workflow
 pipeline-stage-view
 generic-webhook-trigger
+eddsa-api
